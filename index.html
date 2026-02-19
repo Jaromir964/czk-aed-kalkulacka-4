@@ -109,6 +109,44 @@ let currentDays = 7;
 
 async function fetchData(){
 
+try{
+
+const url = `https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=compact&apikey=${API_KEY}`;
+const res = await fetch(url);
+const data = await res.json();
+
+// Debug – vypíše strukturu do konzole
+console.log(data);
+
+if(!data || !data["Time Series FX (Daily)"]){
+document.getElementById("rate").innerText = "Data nejsou dostupná";
+return;
+}
+
+fullData = data["Time Series FX (Daily)"];
+
+const dates = Object.keys(fullData).sort();
+if(dates.length === 0){
+document.getElementById("rate").innerText = "Prázdná data";
+return;
+}
+
+const latest = dates[dates.length-1];
+const latestRate = parseFloat(fullData[latest]["4. close"]);
+
+document.getElementById("rate").innerText =
+"Aktuální kurz: 1 CZK = " + latestRate.toFixed(4) + " AED";
+
+loadHistory(currentDays, document.querySelector(".active"));
+
+}catch(e){
+document.getElementById("rate").innerText = "Chyba skriptu";
+console.error(e);
+}
+
+}
+
+
 const url = `https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=full&apikey=${API_KEY}`;
 const res = await fetch(url);
 const data = await res.json();
