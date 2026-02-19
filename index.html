@@ -1,1 +1,187 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CZK → AED Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<style>
+body{
+margin:0;
+padding:30px;
+background:#f4f6f9;
+font-family:-apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.container{
+max-width:1100px;
+margin:auto;
+background:white;
+padding:40px;
+border-radius:24px;
+box-shadow:0 25px 60px rgba(0,0,0,.08);
+}
+
+.header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:30px;
+}
+
+.rate-box{
+font-size:34px;
+font-weight:700;
+}
+
+.stats{
+display:flex;
+gap:40px;
+margin-bottom:20px;
+font-weight:600;
+}
+
+.stat{
+font-size:18px;
+}
+
+.buttons{
+display:flex;
+gap:10px;
+margin-bottom:20px;
+}
+
+button{
+padding:10px 18px;
+border:none;
+border-radius:8px;
+background:#e9edf3;
+cursor:pointer;
+font-weight:600;
+}
+
+button.active{
+background:#007aff;
+color:white;
+}
+
+canvas{
+margin-top:10px;
+}
+
+.up{ color:#16a34a; }
+.down{ color:#dc2626; }
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="header">
+<div class="rate-box" id="rate">Načítá se kurz...</div>
+</div>
+
+<div class="stats">
+<div class="stat">Změna: <span id="change"></span></div>
+<div class="stat">Min: <span id="min"></span></div>
+<div class="stat">Max: <span id="max"></span></div>
+</div>
+
+<div class="buttons">
+<button onclick="loadHistory(7,this)" class="active">7 dní</button>
+<button onclick="loadHistory(30,this)">30 dní</button>
+<button onclick="loadHistory(90,this)">90 dní</button>
+</div>
+
+<canvas id="chart"></canvas>
+
+</div>
+
+<script>
+
+const API_KEY = "QE7EVYZZBM5J6VUR";
+let chart;
+let fullData = {};
+let currentDays = 7;
+
+async function fetchData(){
+
+const url = `https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=full&apikey=${API_KEY}`;
+const res = await fetch(url);
+const data = await res.json();
+
+if(!data["Time Series FX (Daily)"]){
+document.getElementById("rate").innerText = "Chyba načtení dat";
+return;
+}
+
+fullData = data["Time Series FX (Daily)"];
+
+const dates = Object.keys(fullData).sort();
+const latest = dates[dates.length-1];
+const latestRate = parseFloat(fullData[latest]["4. close"]);
+
+document.getElementById("rate").innerText =
+"Aktuální kurz: 1 CZK = " + latestRate.toFixed(4) + " AED";
+
+loadHistory(currentDays, document.querySelector(".active"));
+}
+
+function loadHistory(days,btn){
+
+currentDays = days;
+document.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+btn.classList.add("active");
+
+const dates = Object.keys(fullData).sort().slice(-days);
+const values = dates.map(d => parseFloat(fullData[d]["4. close"]));
+
+const first = values[0];
+const last = values[values.length-1];
+const min = Math.min(...values);
+const max = Math.max(...values);
+const change = ((last-first)/first*100).toFixed(2);
+
+const changeEl = document.getElementById("change");
+changeEl.innerText = (change>=0?"+":"") + change + " %";
+changeEl.className = change>=0 ? "up" : "down";
+
+document.getElementById("min").innerText = min.toFixed(4);
+document.getElementById("max").innerText = max.toFixed(4);
+
+if(chart) chart.destroy();
+
+chart = new Chart(document.getElementById("chart"), {
+type:"line",
+data:{
+labels:dates,
+datasets:[{
+data:values,
+tension:0.3,
+pointRadius:2,
+borderWidth:2,
+fill:false
+}]
+},
+options:{
+responsive:true,
+interaction:{mode:'index',intersect:false},
+plugins:{legend:{display:false}},
+scales:{
+x:{grid:{display:false}},
+y:{grid:{color:"#eee"}}
+}
+}
+});
+
+}
+
+fetchData();
+
+</script>
+
+</body>
+</html>
