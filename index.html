@@ -9,30 +9,23 @@
 <style>
 body{
 margin:0;
-padding:30px;
-background:#f4f6f9;
-font-family:-apple-system, BlinkMacSystemFont, sans-serif;
+padding:40px;
+background:#f2f4f7;
+font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 }
 
 .container{
-max-width:1100px;
+max-width:1000px;
 margin:auto;
 background:white;
 padding:40px;
-border-radius:24px;
-box-shadow:0 25px 60px rgba(0,0,0,.08);
+border-radius:20px;
+box-shadow:0 20px 60px rgba(0,0,0,.08);
 }
 
-.header{
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:30px;
-}
-
-.rate-box{
-font-size:34px;
-font-weight:700;
+h1{
+margin:0 0 20px 0;
+font-size:28px;
 }
 
 .stats{
@@ -42,10 +35,6 @@ margin-bottom:20px;
 font-weight:600;
 }
 
-.stat{
-font-size:18px;
-}
-
 .buttons{
 display:flex;
 gap:10px;
@@ -53,47 +42,40 @@ margin-bottom:20px;
 }
 
 button{
-padding:10px 18px;
+padding:10px 16px;
 border:none;
 border-radius:8px;
-background:#e9edf3;
+background:#e5e7eb;
 cursor:pointer;
 font-weight:600;
 }
 
 button.active{
-background:#007aff;
+background:#2563eb;
 color:white;
 }
 
-canvas{
-margin-top:10px;
-}
-
-.up{ color:#16a34a; }
-.down{ color:#dc2626; }
+.up{color:#16a34a;}
+.down{color:#dc2626;}
 
 </style>
 </head>
-
 <body>
 
 <div class="container">
 
-<div class="header">
-<div class="rate-box" id="rate">Načítá se kurz...</div>
-</div>
+<h1 id="rate">Načítá se kurz...</h1>
 
 <div class="stats">
-<div class="stat">Změna: <span id="change"></span></div>
-<div class="stat">Min: <span id="min"></span></div>
-<div class="stat">Max: <span id="max"></span></div>
+<div>Změna: <span id="change"></span></div>
+<div>Min: <span id="min"></span></div>
+<div>Max: <span id="max"></span></div>
 </div>
 
 <div class="buttons">
-<button onclick="loadHistory(7,this)" class="active">7 dní</button>
-<button onclick="loadHistory(30,this)">30 dní</button>
-<button onclick="loadHistory(90,this)">90 dní</button>
+<button class="active" onclick="loadData(7,this)">7 dní</button>
+<button onclick="loadData(30,this)">30 dní</button>
+<button onclick="loadData(90,this)">90 dní</button>
 </div>
 
 <canvas id="chart"></canvas>
@@ -104,78 +86,45 @@ margin-top:10px;
 
 const API_KEY = "QE7EVYZZBM5J6VUR";
 let chart;
-let fullData = {};
-let currentDays = 7;
+let historyData = {};
 
 async function fetchData(){
 
 try{
 
 const url = `https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=compact&apikey=${API_KEY}`;
-const res = await fetch(url);
-const data = await res.json();
-
-// Debug – vypíše strukturu do konzole
-console.log(data);
-
-if(!data || !data["Time Series FX (Daily)"]){
-document.getElementById("rate").innerText = "Data nejsou dostupná";
-return;
-}
-
-fullData = data["Time Series FX (Daily)"];
-
-const dates = Object.keys(fullData).sort();
-if(dates.length === 0){
-document.getElementById("rate").innerText = "Prázdná data";
-return;
-}
-
-const latest = dates[dates.length-1];
-const latestRate = parseFloat(fullData[latest]["4. close"]);
-
-document.getElementById("rate").innerText =
-"Aktuální kurz: 1 CZK = " + latestRate.toFixed(4) + " AED";
-
-loadHistory(currentDays, document.querySelector(".active"));
-
-}catch(e){
-document.getElementById("rate").innerText = "Chyba skriptu";
-console.error(e);
-}
-
-}
-
-
-const url = `https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=full&apikey=${API_KEY}`;
-const res = await fetch(url);
-const data = await res.json();
+const response = await fetch(url);
+const data = await response.json();
 
 if(!data["Time Series FX (Daily)"]){
-document.getElementById("rate").innerText = "Chyba načtení dat";
+document.getElementById("rate").innerText="Data nejsou dostupná";
 return;
 }
 
-fullData = data["Time Series FX (Daily)"];
+historyData = data["Time Series FX (Daily)"];
 
-const dates = Object.keys(fullData).sort();
+const dates = Object.keys(historyData).sort();
 const latest = dates[dates.length-1];
-const latestRate = parseFloat(fullData[latest]["4. close"]);
+const latestRate = parseFloat(historyData[latest]["4. close"]);
 
 document.getElementById("rate").innerText =
 "Aktuální kurz: 1 CZK = " + latestRate.toFixed(4) + " AED";
 
-loadHistory(currentDays, document.querySelector(".active"));
+loadData(7, document.querySelector(".active"));
+
+}catch(e){
+document.getElementById("rate").innerText="Chyba načtení dat";
 }
 
-function loadHistory(days,btn){
+}
 
-currentDays = days;
-document.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+function loadData(days,btn){
+
+document.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
 btn.classList.add("active");
 
-const dates = Object.keys(fullData).sort().slice(-days);
-const values = dates.map(d => parseFloat(fullData[d]["4. close"]));
+const dates = Object.keys(historyData).sort().slice(-days);
+const values = dates.map(d=>parseFloat(historyData[d]["4. close"]));
 
 const first = values[0];
 const last = values[values.length-1];
@@ -184,15 +133,15 @@ const max = Math.max(...values);
 const change = ((last-first)/first*100).toFixed(2);
 
 const changeEl = document.getElementById("change");
-changeEl.innerText = (change>=0?"+":"") + change + " %";
-changeEl.className = change>=0 ? "up" : "down";
+changeEl.innerText=(change>=0?"+":"")+change+" %";
+changeEl.className = change>=0 ? "up":"down";
 
-document.getElementById("min").innerText = min.toFixed(4);
-document.getElementById("max").innerText = max.toFixed(4);
+document.getElementById("min").innerText=min.toFixed(4);
+document.getElementById("max").innerText=max.toFixed(4);
 
 if(chart) chart.destroy();
 
-chart = new Chart(document.getElementById("chart"), {
+chart=new Chart(document.getElementById("chart"),{
 type:"line",
 data:{
 labels:dates,
@@ -200,18 +149,13 @@ datasets:[{
 data:values,
 tension:0.3,
 pointRadius:2,
-borderWidth:2,
-fill:false
+borderWidth:2
 }]
 },
 options:{
 responsive:true,
-interaction:{mode:'index',intersect:false},
 plugins:{legend:{display:false}},
-scales:{
-x:{grid:{display:false}},
-y:{grid:{color:"#eee"}}
-}
+interaction:{mode:'index',intersect:false}
 }
 });
 
