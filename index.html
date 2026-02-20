@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CZK → AED Dashboard</title>
+<title>CZK → AED Invest Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
@@ -15,7 +15,7 @@ font-family:-apple-system,BlinkMacSystemFont,sans-serif;
 }
 
 .container{
-max-width:1000px;
+max-width:1100px;
 margin:auto;
 background:white;
 padding:40px;
@@ -48,6 +48,7 @@ border-radius:8px;
 background:#e5e7eb;
 cursor:pointer;
 font-weight:600;
+cursor:pointer;
 }
 
 button.active{
@@ -57,6 +58,20 @@ color:white;
 
 .up{color:#16a34a;}
 .down{color:#dc2626;}
+
+.alertBox{
+margin-top:20px;
+padding:15px;
+background:#f9fafb;
+border-radius:10px;
+}
+
+input{
+padding:8px;
+margin-right:10px;
+border-radius:6px;
+border:1px solid #ddd;
+}
 
 </style>
 </head>
@@ -76,9 +91,16 @@ color:white;
 <button class="active" onclick="loadData(7,this)">7 dní</button>
 <button onclick="loadData(30,this)">30 dní</button>
 <button onclick="loadData(90,this)">90 dní</button>
+<button onclick="exportCSV()">Export CSV</button>
 </div>
 
 <canvas id="chart"></canvas>
+
+<div class="alertBox">
+<input type="number" step="0.0001" id="alertValue" placeholder="Zadej cílový kurz">
+<button onclick="checkAlert()">Nastavit alert</button>
+<span id="alertStatus"></span>
+</div>
 
 </div>
 
@@ -87,6 +109,7 @@ color:white;
 const API_KEY = "QE7EVYZZBM5J6VUR";
 let chart;
 let historyData = {};
+let currentRate = null;
 
 async function fetchData(){
 
@@ -105,10 +128,10 @@ historyData = data["Time Series FX (Daily)"];
 
 const dates = Object.keys(historyData).sort();
 const latest = dates[dates.length-1];
-const latestRate = parseFloat(historyData[latest]["4. close"]);
+currentRate = parseFloat(historyData[latest]["4. close"]);
 
 document.getElementById("rate").innerText =
-"Aktuální kurz: 1 CZK = " + latestRate.toFixed(4) + " AED";
+"Aktuální kurz: 1 CZK = " + currentRate.toFixed(4) + " AED";
 
 loadData(7, document.querySelector(".active"));
 
@@ -118,6 +141,17 @@ document.getElementById("rate").innerText="Chyba načtení dat";
 
 }
 
+function calculateMA(values, period){
+return values.map((v,i)=>{
+if(i<period-1) return null;
+let sum=0;
+for(let j=0;j<period;j++){
+sum+=values[i-j];
+}
+return sum/period;
+});
+}
+
 function loadData(days,btn){
 
 document.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
@@ -125,6 +159,7 @@ btn.classList.add("active");
 
 const dates = Object.keys(historyData).sort().slice(-days);
 const values = dates.map(d=>parseFloat(historyData[d]["4. close"]));
+const ma14 = calculateMA(values,14);
 
 const first = values[0];
 const last = values[values.length-1];
@@ -145,20 +180,54 @@ chart=new Chart(document.getElementById("chart"),{
 type:"line",
 data:{
 labels:dates,
-datasets:[{
+datasets:[
+{
+label:"Kurz",
 data:values,
 tension:0.3,
-pointRadius:2,
-borderWidth:2
-}]
+borderWidth:2,
+borderColor: change>=0 ? "#16a34a" : "#dc2626"
+},
+{
+label:"MA14",
+data:ma14,
+tension:0.3,
+borderWidth:2,
+borderDash:[5,5]
+}
+]
 },
 options:{
 responsive:true,
-plugins:{legend:{display:false}},
+plugins:{legend:{display:true}},
 interaction:{mode:'index',intersect:false}
 }
 });
 
+}
+
+function exportCSV(){
+let csv="Date,Rate\n";
+Object.keys(historyData).sort().forEach(d=>{
+csv+=d+","+historyData[d]["4. close"]+"\n";
+});
+const blob=new Blob([csv],{type:"text/csv"});
+const url=URL.createObjectURL(blob);
+const a=document.createElement("a");
+a.href=url;
+a.download="CZK_AED_history.csv";
+a.click();
+}
+
+function checkAlert(){
+const target=parseFloat(document.getElementById("alertValue").value);
+if(!target || !currentRate) return;
+
+if(currentRate>=target){
+document.getElementById("alertStatus").innerText="Kurz dosáhl cílové hodnoty!";
+}else{
+document.getElementById("alertStatus").innerText="Zatím nedosaženo.";
+}
 }
 
 fetchData();
