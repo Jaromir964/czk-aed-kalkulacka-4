@@ -11,7 +11,8 @@
 <style>
 body{margin:0;padding:40px;background:#f2f4f7;font-family:-apple-system,BlinkMacSystemFont,sans-serif;}
 .container{max-width:1100px;margin:auto;background:white;padding:40px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.08);}
-h1{margin:0 0 10px 0;font-size:28px;}
+h1{margin:0 0 5px 0;font-size:32px;}
+.live{font-size:14px;color:#6b7280;margin-bottom:10px;}
 .subinfo{font-size:14px;color:#6b7280;margin-bottom:20px;}
 .stats{display:flex;gap:40px;margin-bottom:20px;font-weight:600;}
 input{padding:8px;border-radius:6px;border:1px solid #ddd;margin-right:10px;}
@@ -24,13 +25,14 @@ button{padding:10px 16px;border:none;border-radius:8px;background:#2563eb;color:
 
 <div class="container">
 
-<h1 id="rate">Načítá se kurz...</h1>
-<div class="subinfo" id="timestamp"></div>
+<h1 id="liveRate">Načítá se live kurz...</h1>
+<div class="live" id="liveTime"></div>
+<div class="subinfo" id="dailyInfo"></div>
 
 <div class="stats">
-<div>Změna: <span id="change"></span></div>
-<div>Min: <span id="min"></span></div>
-<div>Max: <span id="max"></span></div>
+<div>Změna (30d): <span id="change"></span></div>
+<div>Min (30d): <span id="min"></span></div>
+<div>Max (30d): <span id="max"></span></div>
 </div>
 
 <canvas id="chart"></canvas>
@@ -48,36 +50,52 @@ button{padding:10px 16px;border:none;border-radius:8px;background:#2563eb;color:
 emailjs.init("IBoBc4YrsbAyOMkHh");
 
 const API_KEY="QE7EVYZZBM5J6VUR";
-let historyData={}, currentRate=null, chart;
+let historyData={}, liveRate=null, chart;
 
-async function fetchData(){
-try{
+// 🔵 1) Načtení historie (jen 1x)
+async function fetchDaily(){
 const url=`https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=compact&apikey=${API_KEY}`;
-const response=await fetch(url);
-const data=await response.json();
+const res=await fetch(url);
+const data=await res.json();
 
 if(!data["Time Series FX (Daily)"]){
-document.getElementById("rate").innerText="Data nejsou dostupná";
+document.getElementById("liveRate").innerText="Chyba načtení dat";
 return;
 }
 
 historyData=data["Time Series FX (Daily)"];
 const dates=Object.keys(historyData).sort();
 const latest=dates[dates.length-1];
-currentRate=parseFloat(historyData[latest]["4. close"]);
 
-document.getElementById("rate").innerText="1 CZK = "+currentRate.toFixed(4)+" AED";
-document.getElementById("timestamp").innerText="Data z trhu: "+latest+" | Načteno: "+new Date().toLocaleString("cs-CZ");
+document.getElementById("dailyInfo").innerText=
+"Poslední uzavřený den: "+latest+" (denní close)";
 
 loadChart(dates.slice(-30));
 updateStats(dates.slice(-30));
+}
+
+// 🔵 2) Live kurz (každých 60 s)
+async function fetchLive(){
+const url=`https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=CZK&to_currency=AED&apikey=${API_KEY}`;
+const res=await fetch(url);
+const data=await res.json();
+
+if(!data["Realtime Currency Exchange Rate"]) return;
+
+liveRate=parseFloat(
+data["Realtime Currency Exchange Rate"]["5. Exchange Rate"]
+);
+
+document.getElementById("liveRate").innerText=
+"Live kurz: 1 CZK = "+liveRate.toFixed(5)+" AED";
+
+document.getElementById("liveTime").innerText=
+"Aktuální čas: "+new Date().toLocaleTimeString("cs-CZ");
+
 checkSavedAlert();
-
-}catch(e){
-document.getElementById("rate").innerText="Chyba načtení dat";
-}
 }
 
+// 🔵 Graf
 function loadChart(dates){
 const values=dates.map(d=>parseFloat(historyData[d]["4. close"]));
 if(chart) chart.destroy();
@@ -88,6 +106,7 @@ options:{responsive:true,plugins:{legend:{display:false}}}
 });
 }
 
+// 🔵 Statistiky
 function updateStats(dates){
 const values=dates.map(d=>parseFloat(historyData[d]["4. close"]));
 const first=values[0];
@@ -96,33 +115,33 @@ const change=((last-first)/first*100).toFixed(2);
 const min=Math.min(...values).toFixed(4);
 const max=Math.max(...values).toFixed(4);
 
-const changeEl=document.getElementById("change");
-changeEl.innerText=(change>=0?"+":"")+change+" %";
-changeEl.className=change>=0?"up":"down";
+const el=document.getElementById("change");
+el.innerText=(change>=0?"+":"")+change+" %";
+el.className=change>=0?"up":"down";
 
 document.getElementById("min").innerText=min;
 document.getElementById("max").innerText=max;
 }
 
+// 🔵 Alert
 function setAlert(){
 const target=parseFloat(document.getElementById("alertValue").value);
 if(!target) return;
 localStorage.setItem("czkAedAlert",target);
 document.getElementById("alertStatus").innerText="Alert uložen.";
-checkSavedAlert();
 }
 
 function checkSavedAlert(){
 const saved=localStorage.getItem("czkAedAlert");
-if(!saved||!currentRate) return;
+if(!saved||!liveRate) return;
 
 document.getElementById("alertValue").value=saved;
 
-if(currentRate>=parseFloat(saved)){
+if(liveRate>=parseFloat(saved)){
 document.getElementById("alertStatus").innerText="🔔 Kurz dosažen – odesílám email...";
 
 emailjs.send("service_wex2goh","template_jeypaxq",{
-rate: currentRate.toFixed(4),
+rate: liveRate.toFixed(5),
 target: saved
 }).then(function(){
 document.getElementById("alertStatus").innerText="Email odeslán ✔";
@@ -133,7 +152,10 @@ document.getElementById("alertStatus").innerText="Aktivní alert na "+saved;
 }
 }
 
-fetchData();
+// 🔵 Inicializace
+fetchDaily();
+fetchLive();
+setInterval(fetchLive,60000);
 
 </script>
 </body>
