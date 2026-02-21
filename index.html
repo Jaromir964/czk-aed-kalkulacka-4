@@ -4,76 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CZK → AED Invest Dashboard</title>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
 
 <style>
-body{
-margin:0;
-padding:40px;
-background:#f2f4f7;
-font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-}
-
-.container{
-max-width:1100px;
-margin:auto;
-background:white;
-padding:40px;
-border-radius:20px;
-box-shadow:0 20px 60px rgba(0,0,0,.08);
-}
-
+body{margin:0;padding:40px;background:#f2f4f7;font-family:-apple-system,BlinkMacSystemFont,sans-serif;}
+.container{max-width:1100px;margin:auto;background:white;padding:40px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.08);}
 h1{margin:0 0 10px 0;font-size:28px;}
-
-.subinfo{
-font-size:14px;
-color:#6b7280;
-margin-bottom:20px;
-}
-
-.stats{
-display:flex;
-gap:40px;
-margin-bottom:20px;
-font-weight:600;
-}
-
-.buttons{
-display:flex;
-gap:10px;
-margin-bottom:20px;
-}
-
-button{
-padding:10px 16px;
-border:none;
-border-radius:8px;
-background:#e5e7eb;
-font-weight:600;
-cursor:pointer;
-}
-
-button.active{
-background:#2563eb;
-color:white;
-}
-
+.subinfo{font-size:14px;color:#6b7280;margin-bottom:20px;}
+.stats{display:flex;gap:40px;margin-bottom:20px;font-weight:600;}
+input{padding:8px;border-radius:6px;border:1px solid #ddd;margin-right:10px;}
+button{padding:10px 16px;border:none;border-radius:8px;background:#2563eb;color:white;font-weight:600;cursor:pointer;}
 .up{color:#16a34a;}
 .down{color:#dc2626;}
-
-.zone{
-margin-top:25px;
-padding:20px;
-border-radius:12px;
-font-size:20px;
-font-weight:700;
-text-align:center;
-}
-
-.zone.green{background:#dcfce7;color:#166534;}
-.zone.yellow{background:#fef9c3;color:#854d0e;}
-.zone.red{background:#fee2e2;color:#991b1b;}
-
 </style>
 </head>
 <body>
@@ -89,158 +33,108 @@ text-align:center;
 <div>Max: <span id="max"></span></div>
 </div>
 
-<div class="buttons">
-<button class="active" onclick="loadData(7,this)">7 dní</button>
-<button onclick="loadData(30,this)">30 dní</button>
-<button onclick="loadData(90,this)">90 dní</button>
-</div>
-
 <canvas id="chart"></canvas>
 
-<div id="zoneBox" class="zone"></div>
+<div style="margin-top:30px;">
+<input type="number" step="0.0001" id="alertValue" placeholder="Zadej cílový kurz">
+<button onclick="setAlert()">Uložit alert</button>
+<span id="alertStatus"></span>
+</div>
 
 </div>
 
 <script>
 
-const API_KEY = "QE7EVYZZBM5J6VUR";
-let chart;
-let historyData = {};
-let currentRate = null;
+emailjs.init("IBoBc4YrsbAyOMkHh");
+
+const API_KEY="QE7EVYZZBM5J6VUR";
+let historyData={}, currentRate=null, chart;
 
 async function fetchData(){
-
 try{
-
-const url = `https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=compact&apikey=${API_KEY}`;
-const response = await fetch(url);
-const data = await response.json();
+const url=`https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=CZK&to_symbol=AED&outputsize=compact&apikey=${API_KEY}`;
+const response=await fetch(url);
+const data=await response.json();
 
 if(!data["Time Series FX (Daily)"]){
 document.getElementById("rate").innerText="Data nejsou dostupná";
 return;
 }
 
-historyData = data["Time Series FX (Daily)"];
+historyData=data["Time Series FX (Daily)"];
+const dates=Object.keys(historyData).sort();
+const latest=dates[dates.length-1];
+currentRate=parseFloat(historyData[latest]["4. close"]);
 
-const dates = Object.keys(historyData).sort();
-const latest = dates[dates.length-1];
-currentRate = parseFloat(historyData[latest]["4. close"]);
+document.getElementById("rate").innerText="1 CZK = "+currentRate.toFixed(4)+" AED";
+document.getElementById("timestamp").innerText="Data z trhu: "+latest+" | Načteno: "+new Date().toLocaleString("cs-CZ");
 
-document.getElementById("rate").innerText =
-"Aktuální kurz: 1 CZK = " + currentRate.toFixed(4) + " AED";
-
-const now = new Date();
-document.getElementById("timestamp").innerText =
-"Data z trhu: " + latest +
-" | Načteno: " + now.toLocaleString("cs-CZ");
-
-loadData(7, document.querySelector(".active"));
+loadChart(dates.slice(-30));
+updateStats(dates.slice(-30));
+checkSavedAlert();
 
 }catch(e){
 document.getElementById("rate").innerText="Chyba načtení dat";
 }
-
 }
 
-function calculateMA(values, period){
-return values.map((v,i)=>{
-if(i<period-1) return null;
-let sum=0;
-for(let j=0;j<period;j++){ sum+=values[i-j]; }
-return sum/period;
-});
-}
-
-function evaluateZone(values){
-
-const last = values[values.length-1];
-const min90 = Math.min(...Object.values(historyData)
-.slice(-90)
-.map(d=>parseFloat(d["4. close"])));
-
-const ma14 = calculateMA(values,14);
-const lastMA = ma14[ma14.length-1];
-
-const distMin = ((last-min90)/min90)*100;
-const distMA = ((last-lastMA)/lastMA)*100;
-
-const box = document.getElementById("zoneBox");
-
-if(distMin <= 1 && distMA <= -0.5){
-box.className="zone green";
-box.innerText="🟢 SILNÁ NÁKUPNÍ ZÓNA";
-}
-else if(distMin <= 2.5){
-box.className="zone yellow";
-box.innerText="🟡 ZAJÍMAVÁ OBLAST – sledovat";
-}
-else{
-box.className="zone red";
-box.innerText="🔴 SPÍŠE VYČKAT";
-}
-
-}
-
-function loadData(days,btn){
-
-document.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
-btn.classList.add("active");
-
-const dates = Object.keys(historyData).sort().slice(-days);
-const values = dates.map(d=>parseFloat(historyData[d]["4. close"]));
-const ma14 = calculateMA(values,14);
-
-const first = values[0];
-const last = values[values.length-1];
-const min = Math.min(...values);
-const max = Math.max(...values);
-const change = ((last-first)/first*100).toFixed(2);
-
-const changeEl = document.getElementById("change");
-changeEl.innerText=(change>=0?"+":"")+change+" %";
-changeEl.className = change>=0 ? "up":"down";
-
-document.getElementById("min").innerText=min.toFixed(4);
-document.getElementById("max").innerText=max.toFixed(4);
-
+function loadChart(dates){
+const values=dates.map(d=>parseFloat(historyData[d]["4. close"]));
 if(chart) chart.destroy();
-
 chart=new Chart(document.getElementById("chart"),{
 type:"line",
-data:{
-labels:dates,
-datasets:[
-{
-label:"Kurz",
-data:values,
-tension:0.3,
-borderWidth:2,
-borderColor: change>=0 ? "#16a34a" : "#dc2626"
-},
-{
-label:"MA14",
-data:ma14,
-tension:0.3,
-borderWidth:2,
-borderDash:[5,5]
-}
-]
-},
-options:{
-responsive:true,
-plugins:{legend:{display:true}},
-interaction:{mode:'index',intersect:false}
-}
+data:{labels:dates,datasets:[{data:values,tension:0.3,borderWidth:2}]},
+options:{responsive:true,plugins:{legend:{display:false}}}
 });
+}
 
-evaluateZone(values);
+function updateStats(dates){
+const values=dates.map(d=>parseFloat(historyData[d]["4. close"]));
+const first=values[0];
+const last=values[values.length-1];
+const change=((last-first)/first*100).toFixed(2);
+const min=Math.min(...values).toFixed(4);
+const max=Math.max(...values).toFixed(4);
 
+const changeEl=document.getElementById("change");
+changeEl.innerText=(change>=0?"+":"")+change+" %";
+changeEl.className=change>=0?"up":"down";
+
+document.getElementById("min").innerText=min;
+document.getElementById("max").innerText=max;
+}
+
+function setAlert(){
+const target=parseFloat(document.getElementById("alertValue").value);
+if(!target) return;
+localStorage.setItem("czkAedAlert",target);
+document.getElementById("alertStatus").innerText="Alert uložen.";
+checkSavedAlert();
+}
+
+function checkSavedAlert(){
+const saved=localStorage.getItem("czkAedAlert");
+if(!saved||!currentRate) return;
+
+document.getElementById("alertValue").value=saved;
+
+if(currentRate>=parseFloat(saved)){
+document.getElementById("alertStatus").innerText="🔔 Kurz dosažen – odesílám email...";
+
+emailjs.send("service_wex2goh","template_jeypaxq",{
+rate: currentRate.toFixed(4),
+target: saved
+}).then(function(){
+document.getElementById("alertStatus").innerText="Email odeslán ✔";
+localStorage.removeItem("czkAedAlert");
+});
+}else{
+document.getElementById("alertStatus").innerText="Aktivní alert na "+saved;
+}
 }
 
 fetchData();
 
 </script>
-
 </body>
 </html>
